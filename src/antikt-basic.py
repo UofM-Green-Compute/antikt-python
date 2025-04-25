@@ -6,6 +6,7 @@ import sys
 import time
 import logging
 
+from codecarbon import OfflineEmissionsTracker #Add CodeCarbon Offline Mode
 from pathlib import Path
 from copy import deepcopy
 
@@ -53,6 +54,7 @@ def main():
     )
     parser.add_argument("eventfile", help="File with HepMC3 events to process")
 
+ 
     args = parser.parse_args(sys.argv[1:])
 
     if args.info:
@@ -83,6 +85,7 @@ def main():
 
     benchmark = Benchmark(nevents=args.maxevents)
 
+
     # If we are benchmarking the numba code, do a warm up run
     # to jit compile the accelerated code
     if args.trials > 1 and args.numba:
@@ -99,6 +102,14 @@ def main():
         else:
             events = orignal_events
         start = time.monotonic_ns() / 1000.0  # microseconds
+        # Start CodeCarbon tracker, see parameters here: https://mlco2.github.io/codecarbon/parameters.html
+        tracker = OfflineEmissionsTracker(experiment_id=itrial, 
+                                          save_to_file = True, #default name: emissions.csv
+                                          country_iso_code="GBR", 
+                                          tracking_mode="process", 
+                                          log_level="debug") #this can be changed to a less spammy mode 
+        tracker.start()
+
         for ievt, event in enumerate(events, start=1):
             logger.info(f"Event {ievt} has {len(event)} particles")
             antikt_jets = basicjetfinder(event, Rparam=args.radius, ptmin=args.ptmin)
@@ -109,6 +120,9 @@ def main():
                 print(len(antikt_jets), file=fjet)
         end = time.monotonic_ns() / 1000.0
         benchmark.runtimes.append(end - start)
+
+        tracker.stop() # end of CodeCarbon tracking
+
         print(f"Trial {itrial}. Processed {len(events)} events in {end-start:.2f} us")
         print(f"Time per event: {(end-start)/len(events):.2f} us")
     if args.trials > 1:
